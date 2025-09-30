@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>업그레이드 출석체크 앱</title>
+    <!-- Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .status-btn {
+            transition: all 0.2s ease-in-out;
+        }
+        /* 날짜 입력창이 다른 요소에 가려지지 않도록 보장하는 스타일 */
+        #class-date {
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <!-- 메인 컨테이너 -->
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
+
+        <!-- 헤더 -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-indigo-600">혜진쌤의 스마트 출석부</h1>
+            <p class="text-gray-500 mt-2">날짜를 선택하고, 학생들의 상태를 간편하게 기록하세요.</p>
+        </header>
+
+        <!-- 설정 및 명단 입력 섹션 -->
+        <div class="bg-white p-6 rounded-2xl shadow-lg mb-8">
+            <div class="grid md:grid-cols-2 gap-6 mb-4">
+                <div>
+                    <label for="class-date" class="block text-sm font-medium text-gray-700 mb-1">날짜 선택</label>
+                    <input type="date" id="class-date" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="class-title" class="block text-sm font-medium text-gray-700 mb-1">수업/활동명</label>
+                    <input type="text" id="class-title" placeholder="예: 2학기 현장 체험학습" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+            </div>
+            
+            <div>
+                <label for="student-names" class="block text-sm font-medium text-gray-700 mb-1">학생 명단 (한 줄에 한 명씩)</label>
+                <textarea id="student-names" rows="6" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="김민준&#10;이서연&#10;박도윤&#10;..."></textarea>
+            </div>
+            
+            <button id="generate-list-btn" class="mt-4 w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                출석부 생성하기
+            </button>
+        </div>
+
+        <!-- 출석 현황판 -->
+        <div id="summary-container" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8 text-center">
+            <div class="bg-green-100 p-4 rounded-xl shadow">
+                <p class="text-base md:text-lg font-semibold text-green-800">출석(티켓배부)</p>
+                <p id="present-count" class="text-3xl font-bold text-green-600">0</p>
+            </div>
+            <div class="bg-red-100 p-4 rounded-xl shadow">
+                <p class="text-base md:text-lg font-semibold text-red-800">결석</p>
+                <p id="absent-count" class="text-3xl font-bold text-red-600">0</p>
+            </div>
+            <div class="bg-yellow-100 p-4 rounded-xl shadow">
+                <p class="text-base md:text-lg font-semibold text-yellow-800">지각</p>
+                <p id="late-count" class="text-3xl font-bold text-yellow-600">0</p>
+            </div>
+            <div class="bg-purple-100 p-4 rounded-xl shadow">
+                <p class="text-base md:text-lg font-semibold text-purple-800">종례확인</p>
+                <p id="checked-count" class="text-3xl font-bold text-purple-600">0</p>
+            </div>
+             <div class="bg-gray-200 p-4 rounded-xl shadow">
+                <p class="text-base md:text-lg font-semibold text-gray-800">미확인</p>
+                <p id="pending-count" class="text-3xl font-bold text-gray-600">0</p>
+            </div>
+        </div>
+
+        <!-- 학생 목록 컨테이너 -->
+        <div id="student-list-container" class="space-y-3">
+            <!-- 학생 목록이 여기에 동적으로 생성됩니다. -->
+        </div>
+    </div>
+
+    <script>
+        // 웹 페이지의 모든 HTML 요소가 로드된 후에 이 안의 코드를 실행합니다.
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            let students = [];
+
+            // DOM 요소 가져오기
+            const generateBtn = document.getElementById('generate-list-btn');
+            const studentNamesInput = document.getElementById('student-names');
+            const studentListContainer = document.getElementById('student-list-container');
+            const presentCountEl = document.getElementById('present-count');
+            const absentCountEl = document.getElementById('absent-count');
+            const lateCountEl = document.getElementById('late-count');
+            const checkedCountEl = document.getElementById('checked-count');
+            const pendingCountEl = document.getElementById('pending-count');
+            const dateInput = document.getElementById('class-date');
+
+            // 오늘 날짜를 YYYY-MM-DD 형식으로 변환하여 기본값으로 설정
+            const today = new Date();
+            dateInput.value = today.toISOString().split('T')[0];
+
+            // 출석부 생성 버튼 이벤트 리스너
+            generateBtn.addEventListener('click', () => {
+                const names = studentNamesInput.value.split('\n').filter(name => name.trim() !== '');
+                if (names.length === 0) {
+                    alert('학생 명단을 입력해주세요.');
+                    return;
+                }
+                students = names.map((name, index) => ({ id: index, name: name.trim(), status: 'pending' }));
+                renderStudentList();
+            });
+
+            // 학생 목록 렌더링 함수
+            function renderStudentList() {
+                studentListContainer.innerHTML = '';
+                students.forEach(student => {
+                    const studentRow = document.createElement('div');
+                    studentRow.className = `student-row bg-white p-3 md:p-4 rounded-lg shadow-sm flex flex-col md:flex-row items-center justify-between transition-colors duration-300 ${getStatusColor(student.status)}`;
+                    studentRow.dataset.id = student.id;
+                    studentRow.innerHTML = `
+                        <span class="font-medium text-lg mb-2 md:mb-0">${student.name}</span>
+                        <div class="flex space-x-1 md:space-x-2">
+                            <button class="status-btn px-2 py-2 w-24 rounded-md text-sm font-semibold ${student.status === 'present' ? 'bg-green-500 text-white' : 'bg-gray-200 hover:bg-green-200'}" data-status="present">출석(티켓)</button>
+                            <button class="status-btn px-2 py-2 w-16 rounded-md text-sm font-semibold ${student.status === 'absent' ? 'bg-red-500 text-white' : 'bg-gray-200 hover:bg-red-200'}" data-status="absent">결석</button>
+                            <button class="status-btn px-2 py-2 w-16 rounded-md text-sm font-semibold ${student.status === 'late' ? 'bg-yellow-500 text-white' : 'bg-gray-200 hover:bg-yellow-200'}" data-status="late">지각</button>
+                            <button class="status-btn px-2 py-2 w-20 rounded-md text-sm font-semibold ${student.status === 'checked' ? 'bg-purple-500 text-white' : 'bg-gray-200 hover:bg-purple-200'}" data-status="checked">종례확인</button>
+                        </div>
+                    `;
+                    studentListContainer.appendChild(studentRow);
+                });
+                updateSummary();
+            }
+
+            // 상태에 따른 배경색 클래스 반환 함수
+            function getStatusColor(status) {
+                switch(status) {
+                    case 'present': return 'bg-green-50';
+                    case 'absent': return 'bg-red-50';
+                    case 'late': return 'bg-yellow-50';
+                    case 'checked': return 'bg-purple-50';
+                    default: return 'bg-white';
+                }
+            }
+
+            // 출석 현황판 업데이트 함수
+            function updateSummary() {
+                const presentCount = students.filter(s => s.status === 'present').length;
+                const absentCount = students.filter(s => s.status === 'absent').length;
+                const lateCount = students.filter(s => s.status === 'late').length;
+                const checkedCount = students.filter(s => s.status === 'checked').length;
+                const pendingCount = students.length - presentCount - absentCount - lateCount - checkedCount;
+
+                presentCountEl.textContent = presentCount;
+                absentCountEl.textContent = absentCount;
+                lateCountEl.textContent = lateCount;
+                checkedCountEl.textContent = checkedCount;
+                pendingCountEl.textContent = pendingCount;
+            }
+
+            // 상태 변경 이벤트 처리
+            studentListContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('status-btn')) {
+                    const button = e.target;
+                    const newStatus = button.dataset.status;
+                    const studentRow = button.closest('.student-row');
+                    const studentId = parseInt(studentRow.dataset.id, 10);
+                    const student = students.find(s => s.id === studentId);
+                    student.status = (student.status === newStatus) ? 'pending' : newStatus;
+                    renderStudentList();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
